@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Real-Time Trending Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg:      #080c14;
+      --surface: #0e1422;
+      --card:    #111827;
+      --border:  #1e2a40;
+      --blue:    #3b82f6;
+      --teal:    #14b8a6;
+      --amber:   #f59e0b;
+      --rose:    #f43f5e;
+      --green:   #22c55e;
+      --purple:  #a78bfa;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --mono:    'Space Mono', monospace;
+      --sans:    'DM Sans', sans-serif;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); font-family:var(--sans); color:var(--text); padding:24px; }
+
+    /* header */
+    .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; }
+    .header h1 { font-family:var(--mono); font-size:17px; font-weight:700; letter-spacing:.06em; }
+    .header h1 span { color:var(--blue); }
+    .live-badge { display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11px; color:var(--green); }
+    .live-dot { width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+
+    /* section label */
+    .slabel {
+      font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+      color:var(--muted); margin:28px 0 14px; border-left:2px solid var(--blue); padding-left:8px;
+    }
+
+    /* card */
+    .card {
+      background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 20px;
+      position:relative; overflow:hidden;
+    }
+    .card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--ac, var(--blue)); }
+    .card-label { font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; }
+    .card-val { font-family:var(--mono); font-size:26px; font-weight:700; color:var(--ac, var(--blue)); }
+    .card-sub { font-size:11px; color:var(--muted); margin-top:5px; }
+
+    /* grids */
+    .g4 { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+    .g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+    .g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+    /* chart box */
+    .cbox { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .ctitle { font-size:10px; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:14px; }
+
+    /* rank table */
+    .rtable { width:100%; border-collapse:collapse; }
+    .rtable th { font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); padding:0 0 10px; text-align:left; border-bottom:1px solid var(--border); }
+    .rtable td { padding:7px 0; font-size:13px; border-bottom:1px solid rgba(255,255,255,.03); vertical-align:middle; }
+    .rtable tr:last-child td { border-bottom:none; }
+    .rnum { font-family:var(--mono); font-size:10px; color:var(--muted); width:22px; }
+    .rword { color:var(--text); font-weight:500; }
+    .rbar-wrap { width:70px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+    .rbar { height:100%; border-radius:2px; transition:width .6s ease; }
+    .rcnt { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:right; padding-left:8px; min-width:40px; }
+
+    /* stats list */
+    .slist { display:flex; flex-direction:column; gap:0; }
+    .srow { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border); }
+    .srow:last-child { border-bottom:none; }
+    .skey { font-size:12px; color:var(--muted); }
+    .sval { font-family:var(--mono); font-size:14px; font-weight:700; }
+
+    /* highlight */
+    .hl-block { padding:14px; border-radius:8px; margin-bottom:12px; }
+    .hl-block:last-child { margin-bottom:0; }
+    .hl-block.most { background:rgba(20,184,166,.08); border:1px solid rgba(20,184,166,.2); }
+    .hl-block.least { background:rgba(244,63,94,.08); border:1px solid rgba(244,63,94,.2); }
+    .hl-lbl { font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:.1em; margin-bottom:6px; }
+    .hl-lbl.most { color:var(--teal); } .hl-lbl.least { color:var(--rose); }
+    .hl-word { font-family:var(--mono); font-size:20px; font-weight:700; }
+    .hl-word.most { color:var(--teal); } .hl-word.least { color:var(--rose); }
+    .hl-cnt { font-size:11px; color:var(--muted); margin-top:3px; }
+
+    /* velocity row */
+    .vrow { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.03); }
+    .vrow:last-child { border-bottom:none; }
+    .vtag { font-size:13px; font-weight:500; flex:1; }
+    .vpct { font-family:var(--mono); font-size:12px; font-weight:700; min-width:56px; text-align:right; }
+    .vpct.up { color:var(--green); } .vpct.down { color:var(--rose); } .vpct.neu { color:var(--muted); }
+    .vbar-wrap { width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+    .vbar { height:100%; border-radius:2px; background:var(--green); transition:width .5s ease; }
+
+    /* co-occur */
+    .corow { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.03); }
+    .corow:last-child { border-bottom:none; }
+    .cotags { display:flex; align-items:center; gap:6px; font-size:13px; }
+    .cotag { background:rgba(59,130,246,.12); color:var(--blue); padding:2px 8px; border-radius:4px; font-family:var(--mono); font-size:11px; }
+    .coplus { color:var(--muted); font-size:11px; }
+    .cocnt { font-family:var(--mono); font-size:12px; color:var(--muted); }
+
+    /* full hashtag table */
+    .ftable { width:100%; border-collapse:collapse; font-size:13px; }
+    .ftable thead tr { border-bottom:1px solid var(--border); }
+    .ftable th { font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); padding:0 12px 12px 0; text-align:left; }
+    .ftable tbody tr { border-bottom:1px solid rgba(255,255,255,.03); transition:background .15s; }
+    .ftable tbody tr:hover { background:rgba(255,255,255,.02); }
+    .ftable td { padding:9px 12px 9px 0; }
+    .ftable td:last-child { text-align:right; padding-right:0; }
+    .pill { display:inline-block; font-family:var(--mono); font-size:10px; padding:2px 8px; border-radius:20px; font-weight:700; }
+    .pill.top  { background:rgba(20,184,166,.15); color:var(--teal); }
+    .pill.mid  { background:rgba(59,130,246,.12); color:var(--blue); }
+    .pill.low  { background:rgba(244,63,94,.1);   color:var(--rose); }
+
+    /* donut legend */
+    .dlegend { display:flex; flex-direction:column; gap:7px; font-size:12px; color:var(--muted); }
+    .dlegend span { display:flex; align-items:center; gap:6px; }
+    .ddot { width:8px; height:8px; border-radius:2px; display:inline-block; flex-shrink:0; }
+
+    .footer { font-family:var(--mono); font-size:10px; color:var(--muted); text-align:right; margin-top:20px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>//</span> REALTIME TRENDING ANALYTICS</h1>
+  <div class="live-badge"><span class="live-dot"></span> LIVE STREAM</div>
+</div>
+
+<!-- ── STREAM METRICS ─────────────────────────────── -->
+<div class="slabel">Stream metrics</div>
+<div class="g4">
+  <div class="card" style="--ac:var(--blue)">
+    <div class="card-label">Total mentions</div>
+    <div class="card-val" id="mTotal">—</div>
+    <div class="card-sub">all hashtags combined</div>
+  </div>
+  <div class="card" style="--ac:var(--teal)">
+    <div class="card-label">Unique hashtags</div>
+    <div class="card-val" id="mUnique" style="color:var(--teal)">—</div>
+    <div class="card-sub">distinct tags seen</div>
+  </div>
+  <div class="card" style="--ac:var(--amber)">
+    <div class="card-label">Avg count / tag</div>
+    <div class="card-val" id="mAvg" style="color:var(--amber)">—</div>
+    <div class="card-sub">mean mentions per tag</div>
+  </div>
+  <div class="card" style="--ac:var(--purple)">
+    <div class="card-label">Std deviation</div>
+    <div class="card-val" id="mStd" style="color:var(--purple)">—</div>
+    <div class="card-sub">spread in counts</div>
+  </div>
+</div>
+
+<!-- ── LIVE CHARTS ─────────────────────────────────── -->
+<div class="slabel">Live charts</div>
+<div class="g2" style="margin-bottom:14px">
+  <div class="cbox">
+    <div class="ctitle">Top trending hashtags</div>
+    <div style="position:relative;height:220px"><canvas id="barChart"></canvas></div>
+  </div>
+  <div class="cbox">
+    <div class="ctitle">Hashtag share</div>
+    <div style="display:flex;align-items:center;gap:16px;height:220px">
+      <div style="position:relative;width:180px;height:180px;flex-shrink:0"><canvas id="donutChart"></canvas></div>
+      <div class="dlegend" id="donutLegend"></div>
+    </div>
+  </div>
+</div>
+<div class="g2" style="margin-bottom:14px">
+  <div class="cbox">
+    <div class="ctitle">Hashtag frequency — live stream</div>
+    <div style="position:relative;height:200px"><canvas id="lineChart"></canvas></div>
+  </div>
+  <div class="cbox">
+    <div class="ctitle">Micro-batch throughput (rec/s)</div>
+    <div style="position:relative;height:200px"><canvas id="tpChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ── SPARK ANALYTICS — POPULAR / LEAST / SUMMARY ── -->
+<div class="slabel">Spark analytics — counts &amp; statistics</div>
+<div class="g3" style="margin-bottom:14px">
+  <div class="cbox">
+    <div class="ctitle">Most popular (top 5)</div>
+    <table class="rtable">
+      <thead><tr><th>#</th><th>Hashtag</th><th></th><th style="text-align:right">Count</th></tr></thead>
+      <tbody id="topTable"></tbody>
+    </table>
+  </div>
+  <div class="cbox">
+    <div class="ctitle">Least popular (bottom 5)</div>
+    <table class="rtable">
+      <thead><tr><th>#</th><th>Hashtag</th><th></th><th style="text-align:right">Count</th></tr></thead>
+      <tbody id="bottomTable"></tbody>
+    </table>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="cbox">
+      <div class="hl-block most">
+        <div class="hl-lbl most">Most popular</div>
+        <div class="hl-word most" id="mostWord">—</div>
+        <div class="hl-cnt" id="mostCnt">—</div>
+      </div>
+      <div class="hl-block least">
+        <div class="hl-lbl least">Least popular</div>
+        <div class="hl-word least" id="leastWord">—</div>
+        <div class="hl-cnt" id="leastCnt">—</div>
+      </div>
+    </div>
+    <div class="cbox">
+      <div class="ctitle">Statistical summary</div>
+      <div class="slist">
+        <div class="srow"><span class="skey">Total mentions</span>  <span class="sval" id="sTotal"  style="color:var(--blue)">—</span></div>
+        <div class="srow"><span class="skey">Unique hashtags</span> <span class="sval" id="sUnique" style="color:var(--teal)">—</span></div>
+        <div class="srow"><span class="skey">Mean</span>            <span class="sval" id="sMean"   style="color:var(--amber)">—</span></div>
+        <div class="srow"><span class="skey">Median</span>          <span class="sval" id="sMedian" style="color:var(--purple)">—</span></div>
+        <div class="srow"><span class="skey">Std deviation</span>   <span class="sval" id="sStd"    style="color:var(--rose)">—</span></div>
+        <div class="srow"><span class="skey">P25 / P75</span>       <span class="sval" id="sPerc"   style="color:var(--muted);font-size:12px">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── VELOCITY + CO-OCCURRENCE ──────────────────────── -->
+<div class="slabel">Spark analytics — velocity &amp; co-occurrence</div>
+<div class="g2" style="margin-bottom:14px">
+  <div class="cbox">
+    <div class="ctitle">Fastest rising hashtags (velocity)</div>
+    <div id="velocityList"><div style="color:var(--muted);font-size:12px">Waiting for data...</div></div>
+  </div>
+  <div class="cbox">
+    <div class="ctitle">Top hashtag pairs (co-occurrence)</div>
+    <div id="coList"><div style="color:var(--muted);font-size:12px">Waiting for data...</div></div>
+  </div>
+</div>
+
+<!-- ── PEAK HOURS ──────────────────────────────────── -->
+<div class="slabel">Spark analytics — peak hours (24h activity)</div>
+<div class="g2" style="margin-bottom:14px">
+  <div class="cbox">
+    <div class="ctitle">Hourly mention volume</div>
+    <div style="position:relative;height:200px"><canvas id="hourlyChart"></canvas></div>
+  </div>
+  <div class="cbox">
+    <div class="ctitle">Peak hour snapshot</div>
+    <div class="slist">
+      <div class="srow"><span class="skey">Peak hour</span>    <span class="sval" id="peakHour"  style="color:var(--amber)">—</span></div>
+      <div class="srow"><span class="skey">Peak mentions</span><span class="sval" id="peakCount" style="color:var(--amber)">—</span></div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="ctitle">All hashtags — full list</div>
+      <div style="max-height:160px;overflow-y:auto">
+        <table class="ftable">
+          <thead><tr><th>Rank</th><th>Hashtag</th><th>Count</th><th>Tier</th></tr></thead>
+          <tbody id="fullTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer" id="footer">—</div>
+
+<script>
+  const C = ['#3b82f6','#14b8a6','#f43f5e','#f59e0b','#a78bfa','#f97316','#ec4899','#22c55e','#06b6d4','#84cc16'];
+  const grid='rgba(255,255,255,0.04)', tick='#334155';
+  Chart.defaults.color='#64748b';
+  Chart.defaults.font.family="'DM Sans',sans-serif";
+
+  const barChart = new Chart(document.getElementById('barChart').getContext('2d'),{
+    type:'bar',data:{labels:[],datasets:[{label:'Count',data:[],backgroundColor:'#3b82f6',borderRadius:4,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tick,font:{size:10},maxRotation:30},grid:{display:false}},
+              y:{ticks:{color:tick,font:{size:10}},grid:{color:grid}}}}
+  });
+
+  const donutChart = new Chart(document.getElementById('donutChart').getContext('2d'),{
+    type:'doughnut',data:{labels:[],datasets:[{data:[],backgroundColor:C,borderWidth:2,borderColor:'#111827'}]},
+    options:{responsive:false,cutout:'65%',plugins:{legend:{display:false}}}
+  });
+
+  const lineLabels=[];
+  const lineDS=[
+    {label:'#bigdata',data:[],borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.08)',tension:.4,fill:true,pointRadius:2,borderWidth:1.5},
+    {label:'#ai',     data:[],borderColor:'#14b8a6',backgroundColor:'rgba(20,184,166,.06)', tension:.4,fill:true,pointRadius:2,borderWidth:1.5},
+    {label:'#spark',  data:[],borderColor:'#f43f5e',backgroundColor:'transparent',          tension:.4,fill:false,pointRadius:2,borderWidth:1.5},
+    {label:'#kafka',  data:[],borderColor:'#f59e0b',backgroundColor:'transparent',          tension:.4,fill:false,pointRadius:2,borderWidth:1.5},
+  ];
+  const lineChart = new Chart(document.getElementById('lineChart').getContext('2d'),{
+    type:'line',data:{labels:lineLabels,datasets:lineDS},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#94a3b8',boxWidth:8,font:{size:10}}}},
+      scales:{x:{ticks:{color:tick,font:{size:9}},grid:{color:grid}},
+              y:{ticks:{color:tick,font:{size:9}},grid:{color:grid}}}}
+  });
+
+  const tpData=[],tpLabels=[];
+  const tpChart = new Chart(document.getElementById('tpChart').getContext('2d'),{
+    type:'bar',data:{labels:tpLabels,datasets:[{label:'rec/s',data:tpData,backgroundColor:[],borderRadius:3,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tick,font:{size:9}},grid:{display:false}},
+              y:{min:500,ticks:{color:tick,font:{size:9}},grid:{color:grid}}}}
+  });
+
+  const hourlyChart = new Chart(document.getElementById('hourlyChart').getContext('2d'),{
+    type:'bar',
+    data:{labels:Array.from({length:24},(_,i)=>i+'h'),datasets:[{label:'Mentions',data:Array(24).fill(0),backgroundColor:'rgba(245,158,11,.6)',borderRadius:3,borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:tick,font:{size:9}},grid:{display:false}},
+              y:{ticks:{color:tick,font:{size:9}},grid:{color:grid}}}}
+  });
+
+  let batchNum=1;
+
+  function renderRankTable(id, rows, color){
+    const tb=document.getElementById(id);
+    if(!rows||!rows.length){tb.innerHTML='<tr><td colspan="4" style="color:#475569;font-size:12px;padding-top:10px">No data yet</td></tr>';return;}
+    const mx=rows[0].count||1;
+    tb.innerHTML=rows.map((r,i)=>`
+      <tr>
+        <td class="rnum">${i+1}</td>
+        <td class="rword">${r.word}</td>
+        <td><div class="rbar-wrap"><div class="rbar" style="width:${Math.round(r.count/mx*100)}%;background:${color(i)}"></div></div></td>
+        <td class="rcnt">${r.count.toLocaleString()}</td>
+      </tr>`).join('');
+  }
+
+  async function loadTrends(){
+    try{
+      const data=await(await fetch('/api/trends')).json();
+      barChart.data.labels=data.map(d=>d.word);
+      barChart.data.datasets[0].data=data.map(d=>d.count);
+      barChart.update();
+      donutChart.data.labels=data.map(d=>d.word);
+      donutChart.data.datasets[0].data=data.map(d=>d.count);
+      donutChart.update();
+      const total=data.reduce((s,d)=>s+d.count,0);
+      document.getElementById('donutLegend').innerHTML=data.slice(0,6).map((d,i)=>
+        `<span><span class="ddot" style="background:${C[i]}"></span>
+         <span style="flex:1">${d.word}</span>
+         <span style="color:#e2e8f0;font-weight:600">${Math.round(d.count/total*100)}%</span></span>`
+      ).join('');
+      const now=new Date().toLocaleTimeString();
+      if(lineLabels.length>10)lineLabels.shift(); lineLabels.push(now);
+      ['#bigdata','#ai','#spark','#kafka'].forEach((k,i)=>{
+        const f=data.find(d=>d.word===k);
+        if(lineDS[i].data.length>10)lineDS[i].data.shift();
+        lineDS[i].data.push(f?f.count:0);
+      });
+      lineChart.update('none');
+      const rv=1500+Math.round(Math.random()*600);
+      if(tpLabels.length>12){tpLabels.shift();tpData.shift();tpChart.data.datasets[0].backgroundColor.shift();}
+      tpLabels.push('B'+batchNum++); tpData.push(rv);
+      tpChart.data.datasets[0].backgroundColor.push(rv<1600?'#f43f5e':rv<1900?'#f59e0b':'#22c55e');
+      tpChart.update();
+    }catch(e){console.error(e);}
+  }
+
+  async function loadAnalytics(){
+    try{
+      const d=await(await fetch('/api/analytics')).json();
+      if(!d||!d.total_mentions)return;
+      document.getElementById('mTotal').textContent  = d.total_mentions.toLocaleString();
+      document.getElementById('mUnique').textContent = d.unique_hashtags.toLocaleString();
+      document.getElementById('mAvg').textContent    = d.avg_count;
+      document.getElementById('mStd').textContent    = d.std_dev||'—';
+      document.getElementById('sTotal').textContent  = d.total_mentions.toLocaleString();
+      document.getElementById('sUnique').textContent = d.unique_hashtags.toLocaleString();
+      document.getElementById('sMean').textContent   = d.avg_count;
+      document.getElementById('sMedian').textContent = d.median||'—';
+      document.getElementById('sStd').textContent    = d.std_dev||'—';
+      document.getElementById('sPerc').textContent   = `${d.p25||'—'} / ${d.p75||'—'}`;
+      if(d.most_popular&&d.most_popular.word){
+        document.getElementById('mostWord').textContent=d.most_popular.word;
+        document.getElementById('mostCnt').textContent=d.most_popular.count.toLocaleString()+' mentions';
+      }
+      if(d.least_popular&&d.least_popular.word){
+        document.getElementById('leastWord').textContent=d.least_popular.word;
+        document.getElementById('leastCnt').textContent=d.least_popular.count.toLocaleString()+' mentions';
+      }
+      renderRankTable('topTable',    d.top5,    i=>C[i]);
+      renderRankTable('bottomTable', d.bottom5, ()=>'#f43f5e');
+      document.getElementById('footer').textContent='Last synced: '+(d.updated_at||'—').slice(0,19)+' UTC';
+    }catch(e){console.error(e);}
+  }
+
+  async function loadVelocity(){
+    try{
+      const d=await(await fetch('/api/velocity')).json();
+      if(!d||!d.data||!d.data.length)return;
+      const mx=Math.max(...d.data.map(r=>Math.abs(r.pct_change)),1);
+      document.getElementById('velocityList').innerHTML=d.data.map(r=>{
+        const up=r.pct_change>0, cl=r.pct_change>0?'up':r.pct_change<0?'down':'neu';
+        const sign=r.pct_change>0?'+':'';
+        return `<div class="vrow">
+          <span class="vtag">${r.word}</span>
+          <div class="vbar-wrap"><div class="vbar" style="width:${Math.round(Math.abs(r.pct_change)/mx*100)}%;background:${up?'#22c55e':'#f43f5e'}"></div></div>
+          <span class="vpct ${cl}">${sign}${r.pct_change}%</span>
+        </div>`;
+      }).join('');
+    }catch(e){console.error(e);}
+  }
+
+  async function loadCooccurrence(){
+    try{
+      const d=await(await fetch('/api/cooccurrence')).json();
+      if(!d||!d.pairs||!d.pairs.length)return;
+      document.getElementById('coList').innerHTML=d.pairs.map(p=>`
+        <div class="corow">
+          <div class="cotags">
+            <span class="cotag">${p.tag_a}</span>
+            <span class="coplus">+</span>
+            <span class="cotag" style="background:rgba(20,184,166,.1);color:var(--teal)">${p.tag_b}</span>
+          </div>
+          <span class="cocnt">${p.count.toLocaleString()}x</span>
+        </div>`).join('');
+    }catch(e){console.error(e);}
+  }
+
+  async function loadPeakHours(){
+    try{
+      const d=await(await fetch('/api/peak-hours')).json();
+      if(!d||!d.hour_chart)return;
+      hourlyChart.data.datasets[0].data=d.hour_chart;
+      hourlyChart.update();
+      document.getElementById('peakHour').textContent  = d.peak_hour!==undefined?`${d.peak_hour}:00`:'—';
+      document.getElementById('peakCount').textContent = d.peak_count?d.peak_count.toLocaleString():'—';
+    }catch(e){console.error(e);}
+  }
+
+  async function loadAllHashtags(){
+    try{
+      const data=await(await fetch('/api/all-hashtags')).json();
+      if(!data||!data.length)return;
+      const maxC=data[0].count||1;
+      const q1=maxC*0.33, q2=maxC*0.66;
+      document.getElementById('fullTable').innerHTML=data.map(r=>{
+        const tier=r.count>=q2?'top':r.count>=q1?'mid':'low';
+        const label=tier==='top'?'HOT':tier==='mid'?'MID':'LOW';
+        return `<tr>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${r.rank||'—'}</td>
+          <td style="color:var(--text);font-weight:500">${r.word}</td>
+          <td style="font-family:var(--mono);font-size:12px;color:var(--muted)">${r.count.toLocaleString()}</td>
+          <td><span class="pill ${tier}">${label}</span></td>
+        </tr>`;
+      }).join('');
+    }catch(e){console.error(e);}
+  }
+
+  // initial load
+  loadTrends(); loadAnalytics(); loadVelocity(); loadCooccurrence(); loadPeakHours(); loadAllHashtags();
+
+  // polling intervals
+  setInterval(loadTrends,       5000);
+  setInterval(loadAnalytics,    5000);
+  setInterval(loadVelocity,    10000);
+  setInterval(loadCooccurrence,15000);
+  setInterval(loadPeakHours,   30000);
+  setInterval(loadAllHashtags,  8000);
+</script>
+</body>
+</html>
+
